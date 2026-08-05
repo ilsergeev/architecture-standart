@@ -1,0 +1,97 @@
+@startuml
+title Онлайн-открытие депозитов (MVP)
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(NewClient, "Новый клиент")
+Person(IBClient, "Действующий клиент ИБ")
+Person(DepositManager, "Менеджер бэк-офиса депозитов")
+Person(CreditManager, "Менеджер бэк-офиса кредитов")
+Person(CallCenterEmployee, "Сотрудник кол-центра")
+
+Container(WebSite, "Сайт", "PHP/React", "Форма заявки, список депозитов со ставками")
+
+System_Boundary(ib, "Интернет-банк") {
+Container(IBMonolith, "Монолит ИБ", "ASP.NET MVC 4.5 / .NET Framework 4.5.", "Существующий функционал: платежи, текущие счета. Не дорабатывается")
+Container(IBMonolithDB, "IBMonolith DB", "MS SQL", "Данные о транзакциях, пользователи, информация о дебетовых картах")
+}
+
+System_Boundary(abs, "АБС") {
+Container(ABSDesktopClient, "Desktop-клиент", "Delphi", "Рабочие места сотрудников")
+Container(ABSDB, "ABS DB", "Oracle", "Учёт операций по счетам, бухгалтерия, бизнес-логика в PL-SQL, таблица outbox")
+Container(ABSKafkaAdapter, "Kafka адаптер", ".Net", "Читает outbox, публикует события")
+}
+
+System_Boundary(deposits, "Онлайн-открытие депозитов (MVP)") {
+
+Container(DepositFrontend, "Фронтенд депозитов", "React SPA", "Раздел депозитов в интерфейсе ИБ")
+
+Container(API_Gateway, "API Gateway", "Nginx", "Маршрутизация, балансировка нагрузки, валидация сессии монолита и выпуск внутреннего JWT")
+
+Container(AuthService, "Сервис аутентификации сотрудников", ".Net", "Учётные записи сотрудников бэк-офиса, роли, выпуск JWT")
+ContainerDb(AuthServiceDB, "AuthService DB", "PostgreSQL", "Учётные записи, роли")
+
+Container(RateService, "Сервис ставок", ".Net", "Расчёт ставок, оптимизированное чтение для каналов")
+ContainerDb(RateServiceDB, "RateService DB", "PostgreSQL", "Параметры от обоих бэк-офисов, формулы, категории клиентов")
+
+Container(ApplicationService, "Сервис заявок", ".Net", "Управление жизненным циклом заявок")
+ContainerDb(ApplicationServiceDB, "ApplicationService DB", "PostgreSQL", "Заявки")
+
+Container(SMSNotificationService, "Сервис отправки СМС", ".Net", "Отправка пользователю СМС сообщений")
+ContainerDb(SMSNotificationServiceDB, "SMSNotificationService DB", "PostgreSQL", "Коды, история отправки, статусы доставки")
+
+Container(BackOfficeWorkspace, "Рабочее место бэк-офиса", "React SPA", "Доступ к очереди заявок, внесение данных для расчёта ставок")
+
+ContainerQueue(Message_Bus, "Message Bus", "Kafka", "Событийная шина: доменные события")
+
+}
+
+
+System(SMSGateway, "СМС-шлюз", "Интеграция с телеком-оператором")
+System_Ext(TelecomOperator, "Телеком-оператор", "Внешний сервис доставки СМС")
+System_Ext(CallCenterSystem, "Система кол-центра", "Платформа подрядчика: React, Java Spring Boot, PostgreSQL")
+
+
+' ==================== Db->Services Relation ====================
+Rel(AuthService, AuthServiceDB, "Чтение/запись", "SQL")
+Rel(RateService, RateServiceDB, "Чтение/запись", "SQL")
+Rel(ApplicationService, ApplicationServiceDB, "Чтение/запись", "SQL")
+Rel(SMSNotificationService, SMSNotificationServiceDB, "Чтение/запись", "SQL")
+Rel(IBMonolith, IBMonolithDB, "Чтение/запись", "SQL")
+Rel(ABSDesktopClient, ABSDB, "Чтение/запись", "SQL")
+
+' ==================== Clients Layer ====================
+Rel(NewClient, WebSite, "Просматривает ставки, подаёт заявку")
+Rel(WebSite, API_Gateway, "Запрашивает актуальные ставки", "REST/HTTPS")
+Rel(WebSite, CallCenterSystem, "Передаёт заявку (лид)", "REST/HTTPS")
+Rel(IBClient, API_Gateway, "Работает в интернет-банке")
+Rel(API_Gateway, IBMonolith, "Маршрутизирует запросы существующего функционала", "REST/HTTPS")
+Rel(API_Gateway, DepositFrontend, "Маршрутизирует запросы раздела депозитов", "HTTPS")
+Rel(DepositFrontend, API_Gateway, "Запрашивает ставки, подаёт заявку", "REST/HTTPS")
+
+' ==================== Employee Layer ====================
+Rel(CallCenterEmployee, CallCenterSystem, "Обрабатывает заявки, консультирует клиентов")
+Rel(DepositManager, BackOfficeWorkspace, "Обрабатывает заявки, вносит параметры продуктов")
+Rel(CreditManager, BackOfficeWorkspace, "Вносит ставку ЦБ и показатели риска")
+Rel(BackOfficeWorkspace, API_Gateway, "Аутентификация, запросы к сервисам заявок и ставок", "REST/HTTPS")
+Rel(DepositManager, ABSDesktopClient, "Открывает депозит")
+
+' ==================== ApiGateway Layer ====================
+Rel(API_Gateway, AuthService, "Проверка учётных данных, выпуск токена с ролью", "REST/HTTPS")
+Rel(API_Gateway, RateService, "Получение ставок, ведение параметров", "REST/HTTPS")
+Rel(API_Gateway, ApplicationService, "Подача и обработка заявок", "REST/HTTPS")
+
+' ==================== Notification layer ====================
+Rel(ApplicationService, SMSNotificationService, "Запрос кода подтверждения и уведомлений", "REST/HTTPS")
+Rel(SMSNotificationService, SMSGateway, "Отправка СМС", "REST/HTTPS")
+Rel(SMSGateway, TelecomOperator, "Передача СМС")
+Rel(TelecomOperator, IBClient, "Доставка СМС")
+Rel(TelecomOperator, NewClient, "Доставка СМС")
+
+' ==================== Infrastructure layer ====================
+Rel(ABSDB, ABSKafkaAdapter, "Читает outbox", "SQL")
+Rel(ABSKafkaAdapter, Message_Bus, "Публикует события: депозит открыт, категория клиента", "Kafka")
+Rel(Message_Bus, ApplicationService, "Событие: депозит открыт", "Kafka")
+Rel(Message_Bus, RateService, "Событие: категория клиента изменилась", "Kafka")
+
+
+@enduml
