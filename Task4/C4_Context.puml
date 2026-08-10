@@ -1,0 +1,27 @@
+@startuml
+title Предоставление ставок кол-центрам
+!includeurl https://raw.githubusercontent.com/RicardoNiepel/C4-PlantUML/master/C4_Context.puml
+
+Person(CallCenterEmployee, "Сотрудник кол-центра")
+Person(PartnerCallCenterEmployee, "Сотрудник партнёрского кол-центра")
+Person(DepositManager, "Менеджер бэк-офиса депозитов")
+
+System(OnlineDepositService, "Онлайн-открытие депозитов (MVP)")
+
+System_Ext(CallCenterSystem, "Система кол-центра")
+System_Ext(SFTPPartnerCallCenterServer, "SFTP партнёрского кол-центра")
+System_Ext(PartnerCallCenterServer, "Система партнерского кол-центра")
+
+Rel(CallCenterEmployee, CallCenterSystem, "Просматривает актуальные ставки депозитов")
+Rel(CallCenterSystem, OnlineDepositService, "Запрашивает актуальные ставки депозитов")
+
+
+Rel(OnlineDepositService, SFTPPartnerCallCenterServer, "Передает файл со ставками")
+Rel(SFTPPartnerCallCenterServer, PartnerCallCenterServer, "Файл загружается в систему")
+Rel(PartnerCallCenterEmployee, PartnerCallCenterServer,  "Просматривает актуальные ставки депозитов")
+
+
+Rel(DepositManager, OnlineDepositService, "Осуществляет повторную ручную отправку")
+Rel(OnlineDepositService, DepositManager, "Отправляет уведомление о сбое")
+
+@enduml

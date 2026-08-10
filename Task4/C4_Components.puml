@@ -1,0 +1,47 @@
+@startuml
+title Компонет Rate Exporter Service/Rate Service
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+System_Ext(APIGateway, "API Gateway", "Единая точка входа, маршрутизация")
+System_Ext(CallCenterSystem, "Система кол-центра")
+System_Ext(SFTPPartnerCallCenterServer, "SFTP партнёрского кол-центра")
+System_Ext(BackOfficeWorkspace, "Рабочее место бэк-офиса", "Доступ к очереди заявок, внесение данных для расчёта ставок")
+ContainerQueue(MessageBus, "Message Bus", "Kafka", "Событийная шина: доменные события")
+
+ContainerDb(RateExporterDB, "Rate Exporter DB", "PostgreSQL", "Данные о ставках по депозитам, очередь и журнал доставки")
+
+
+Container_Boundary(RateService, "Deposit Rate Service"){
+        Component(PublicDepositAPI, "Deposit API Controller", ".NET/HTTP", "Предоставляет информацию о ставках по депозитам для системы кол-центра")
+        Component(DepositRateUpdatedPublisher, "Rate Publisher", ".NET/Kafka", "Публикует события об изменении ставок")
+    }
+
+Container_Boundary(RateExporterService, "Rate Exporter Service"){
+        Component(ManualExportController, "Manual Export API Controller", ".NET/HTTP", "Контроллер ручного запуска выгрузки")
+        Component(DepositSnapshotGenerator, "Deposit Snapshot Generator", ".NET", "Формирует CSV-снапшот ставок по депозитам")
+        Component(DeliveryOrchestrationWorker, "Delivery Orchestration Worker", ".NET", "Оркестрирует доставку, отвечает за гарантию доставки")
+        Component(DepositRateUpdatedConsumer, "Rate Change Consumer", ".NET/Kafka", "Подписка на события сервиса расчёта об изменении ставок по депозитам")
+        Component(DepositDataRepository, "Deposit Data Repository", ".NET", "Доступ к БД: локальный срез ставок по депозитам")
+        Component(DeliveriesRepository, "Deliveries Repository", ".NET", "Доступ к БД: очередь и журнал доставки")
+        Component(SFTPClient, "SFTP Client", ".NET/SFTP", "Отправляет файл на SFTP-сервер партнёра")
+    }
+
+Rel(CallCenterSystem, APIGateway, "Запрашивает актуальные ставки", "REST/HTTPS")
+Rel(APIGateway, PublicDepositAPI, "Маршрутизирует запрос", "REST/HTTPS")
+Rel(DepositRateUpdatedPublisher, MessageBus, "Публикует событие с актуальными ставками", "Kafka")
+Rel(MessageBus, DepositRateUpdatedConsumer, "Событие об обновлении ставок", "Kafka")
+Rel(DepositRateUpdatedConsumer, DepositDataRepository, "Обновляет локальный срез")
+Rel(DeliveryOrchestrationWorker, DepositSnapshotGenerator, "Запрашивает формирование файла")
+Rel(DepositSnapshotGenerator, DepositDataRepository, "Читает актуальные ставки")
+Rel(DeliveryOrchestrationWorker, DeliveriesRepository, "Статусы, попытки, журнал")
+Rel(DeliveryOrchestrationWorker, SFTPClient, "Передаёт файл")
+Rel(SFTPClient, SFTPPartnerCallCenterServer, "Загружает файл", "SFTP")
+Rel(BackOfficeWorkspace, APIGateway, "Запуск ручной выгрузки")
+Rel(APIGateway, ManualExportController, "Маршрутизирует запрос", "REST/HTTPS")
+Rel(ManualExportController, DeliveryOrchestrationWorker, "Инициирует повторную отправку")
+Rel(DeliveryOrchestrationWorker, BackOfficeWorkspace, "Уведомление о сбое доставки")
+
+Rel(DepositDataRepository, RateExporterDB, "Чтение/запись", "SQL")
+Rel(DeliveriesRepository, RateExporterDB, "Чтение/запись", "SQL")
+
+@enduml
