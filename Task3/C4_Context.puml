@@ -1,0 +1,32 @@
+@startuml
+title Онлайн-открытие депозитов (MVP)
+!includeurl https://raw.githubusercontent.com/RicardoNiepel/C4-PlantUML/master/C4_Context.puml
+
+Person(NewClient, "Новый клиент")
+Person(IBClient, "Действующий клиент ИБ")
+Person(DepositManager, "Менеджер бэк-офиса депозитов")
+Person(CreditManager, "Менеджер бэк-офиса кредитов")
+Person(CallCenterEmployee, "Сотрудник кол-центра")
+
+System(OnlineDepositService, "Онлайн-открытие депозитов (MVP)")
+System(SMSGateway, "СМС шлюз")
+
+System_Ext(ABS, "АБС")
+System_Ext(CallCenterSystem, "Система кол-центра")
+System_Ext(TelecomOperator, "Телеком-система")
+
+Rel(NewClient, OnlineDepositService, "Просматривает депозиты с актуальными ставками, подает заявку")
+Rel(IBClient, OnlineDepositService, "Просматривает депозиты с актуальными и персонализированными ставками, подает заявку")
+Rel(CallCenterEmployee, CallCenterSystem, "Обрабатывает поступившие заявки")
+Rel(DepositManager, OnlineDepositService, "Обрабатывает заявки, вносит параметры депозитных продуктов")
+Rel(DepositManager, ABS, "Подтверждает открытие депозита")
+Rel(CreditManager, OnlineDepositService, "Вносит ставку ЦБ и показатели риска")
+
+Rel(OnlineDepositService, CallCenterSystem, "Передает заявку на открытие депозита")
+Rel(OnlineDepositService, SMSGateway, "Запрос на отправку СМС (коды подтверждения и уведомления)")
+Rel(SMSGateway, TelecomOperator, "Передает СМС для доставки")
+Rel(TelecomOperator, IBClient, "Доставляет СМС")
+Rel(TelecomOperator, NewClient, "Доставляет СМС")
+Rel(ABS, OnlineDepositService, "Сообщает об открытии депозита")
+
+@enduml
